@@ -13,6 +13,7 @@ from homeassistant.components.binary_sensor import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN
 from .entity import CapybaraVPNEntity
@@ -28,12 +29,14 @@ BINARY_SENSORS: tuple[CapybaraBinaryDescription, ...] = (
         key="online",
         name="Подключение",
         device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.get("connection", {}).get("online"),
     ),
     CapybaraBinaryDescription(
         key="frozen",
         name="Подписка заморожена",
         icon="mdi:snowflake",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.get("details", {}).get("is_frozen"),
     ),
 )
@@ -45,7 +48,7 @@ class CapybaraKeyBinarySensor(CapybaraVPNEntity, BinarySensorEntity):
     entity_description: CapybaraBinaryDescription
 
     def __init__(self, coordinator, identity_id: str, client_id: str, description) -> None:
-        super().__init__(coordinator, identity_id, client_id)
+        super().__init__(coordinator, client_id)
         self.entity_description = description
         self._attr_unique_id = f"{client_id}_{description.key}"
 

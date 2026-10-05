@@ -20,17 +20,6 @@ from .const import (
 )
 
 
-def _interval_validator(value: Any) -> int:
-    """Validate polling interval in minutes."""
-    value = int(value)
-    if not MIN_SCAN_INTERVAL_MINUTES <= value <= MAX_SCAN_INTERVAL_MINUTES:
-        raise vol.Invalid(
-            f"Interval must be between {MIN_SCAN_INTERVAL_MINUTES} "
-            f"and {MAX_SCAN_INTERVAL_MINUTES} minutes"
-        )
-    return value
-
-
 def _setup_schema(
     *,
     email: str | None = None,
@@ -45,7 +34,13 @@ def _setup_schema(
         vol.Required(
             CONF_PASSWORD, default=password if password is not None else vol.UNDEFINED
         ): str,
-        vol.Required(CONF_SCAN_INTERVAL, default=interval): _interval_validator,
+        vol.Required(CONF_SCAN_INTERVAL, default=interval): vol.All(
+                vol.Coerce(int),
+                vol.Range(
+                    min=MIN_SCAN_INTERVAL_MINUTES,
+                    max=MAX_SCAN_INTERVAL_MINUTES,
+                ),
+            ),
     }
     return vol.Schema(fields)
 
@@ -54,7 +49,13 @@ def _options_schema(interval: int) -> vol.Schema:
     """Schema for optional runtime settings."""
     return vol.Schema(
         {
-            vol.Required(CONF_SCAN_INTERVAL, default=interval): _interval_validator,
+            vol.Required(CONF_SCAN_INTERVAL, default=interval): vol.All(
+                vol.Coerce(int),
+                vol.Range(
+                    min=MIN_SCAN_INTERVAL_MINUTES,
+                    max=MAX_SCAN_INTERVAL_MINUTES,
+                ),
+            ),
         }
     )
 

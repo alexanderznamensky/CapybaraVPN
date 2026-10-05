@@ -16,6 +16,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfInformation, UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.entity import EntityCategory
 
 from .const import DOMAIN
 from .entity import CapybaraVPNEntity
@@ -61,7 +62,6 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         name="Баланс",
         icon="mdi:wallet",
         native_unit_of_measurement="RUB",
-        device_class=SensorDeviceClass.MONETARY,
         value_fn=lambda d: d.get("summary", {}).get("balance"),
     ),
     AccountSensorDescription(
@@ -69,7 +69,6 @@ ACCOUNT_SENSORS: tuple[AccountSensorDescription, ...] = (
         name="Последний платёж",
         icon="mdi:cash-check",
         native_unit_of_measurement="RUB",
-        device_class=SensorDeviceClass.MONETARY,
         value_fn=lambda d: _last_payment(d).get("amount"),
     ),
     AccountSensorDescription(
@@ -111,7 +110,6 @@ KEY_SENSORS: tuple[KeySensorDescription, ...] = (
         name="Стоимость тарифа",
         icon="mdi:cash",
         native_unit_of_measurement="RUB",
-        device_class=SensorDeviceClass.MONETARY,
         value_fn=lambda d: d.get("addons", {}).get("total_price_rub"),
     ),
     KeySensorDescription(
@@ -140,6 +138,7 @@ KEY_SENSORS: tuple[KeySensorDescription, ...] = (
         key="protocol",
         name="Протокол",
         icon="mdi:shield-key-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda d: d.get("connection", {}).get("protocol"),
     ),
 )
@@ -150,8 +149,8 @@ class CapybaraAccountSensor(CapybaraVPNEntity, SensorEntity):
 
     entity_description: AccountSensorDescription
 
-    def __init__(self, coordinator, identity_id: str, description) -> None:
-        super().__init__(coordinator, identity_id)
+    def __init__(self, coordinator, client_id: str, identity_id: str, description) -> None:
+        super().__init__(coordinator, client_id)
         self.entity_description = description
         self._attr_unique_id = f"{identity_id}_{description.key}"
 
@@ -166,7 +165,7 @@ class CapybaraKeySensor(CapybaraVPNEntity, SensorEntity):
     entity_description: KeySensorDescription
 
     def __init__(self, coordinator, identity_id: str, client_id: str, description) -> None:
-        super().__init__(coordinator, identity_id, client_id)
+        super().__init__(coordinator, client_id)
         self.entity_description = description
         self._attr_unique_id = f"{client_id}_{description.key}"
 
@@ -178,6 +177,7 @@ class CapybaraKeySensor(CapybaraVPNEntity, SensorEntity):
         return self.entity_description.value_fn(item)
 
 
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -187,8 +187,28 @@ async def async_setup_entry(
     coordinator = data["coordinator"]
     identity_id = str(coordinator.data.get("me", {}).get("id") or entry.unique_id)
 
+    key_items = coordinator.data.get("keys", [])
+    if not key_items:
+        return
+
+    def get_client_id(item: dict) -> str | None:
+        return (
+            item.get("details", {}).get("client_id")
+            or item.get("key", {}).get("client_id")
+        )
+
+    primary_client_id = get_client_id(key_items[0])
+    if not primary_client_id:
+        return
+
+    # Account-level sensors live on the same single CapybaraVPN device.
     entities = [
-        CapybaraAccountSensor(coordinator, identity_id, description)
+        CapybaraAccountSensor(
+            coordinator,
+            primary_client_id,
+            identity_id,
+            description,
+        )
         for description in ACCOUNT_SENSORS
     ]
 
@@ -197,15 +217,17 @@ async def async_setup_entry(
     def new_key_entities():
         result = []
         for item in coordinator.data.get("keys", []):
-            client_id = (
-                item.get("details", {}).get("client_id")
-                or item.get("key", {}).get("client_id")
-            )
+            client_id = get_client_id(item)
             if not client_id or client_id in known:
                 continue
             known.add(client_id)
             result.extend(
-                CapybaraKeySensor(coordinator, identity_id, client_id, description)
+                CapybaraKeySensor(
+                    coordinator,
+                    identity_id,
+                    client_id,
+                    description,
+                )
                 for description in KEY_SENSORS
             )
         return result

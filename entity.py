@@ -9,18 +9,15 @@ from .const import DOMAIN
 
 
 class CapybaraVPNEntity(CoordinatorEntity):
-    """Base entity."""
+    """Base CapybaraVPN entity attached to one VPN subscription device."""
 
     _attr_has_entity_name = True
 
-    def __init__(self, coordinator, identity_id: str, client_id: str | None = None) -> None:
+    def __init__(self, coordinator, client_id: str) -> None:
         super().__init__(coordinator)
-        self.identity_id = identity_id
         self.client_id = client_id
 
     def _key_data(self) -> dict | None:
-        if self.client_id is None:
-            return None
         for item in self.coordinator.data.get("keys", []):
             cid = (
                 item.get("details", {}).get("client_id")
@@ -34,21 +31,10 @@ class CapybaraVPNEntity(CoordinatorEntity):
     def available(self) -> bool:
         if not self.coordinator.last_update_success:
             return False
-        if self.client_id is None:
-            return True
         return self._key_data() is not None
 
     @property
     def device_info(self) -> DeviceInfo:
-        if self.client_id is None:
-            return DeviceInfo(
-                identifiers={(DOMAIN, self.identity_id)},
-                name="CapybaraVPN",
-                manufacturer="CapybaraVPN",
-                model="Account",
-                configuration_url="https://capybaravpn.app/dashboard",
-            )
-
         item = self._key_data() or {}
         details = item.get("details", {})
         tariff_name = details.get("tariff_name") or "VPN subscription"
@@ -59,6 +45,5 @@ class CapybaraVPNEntity(CoordinatorEntity):
             name=f"CapybaraVPN {short_id}",
             manufacturer="CapybaraVPN",
             model=tariff_name,
-            via_device=(DOMAIN, self.identity_id),
             configuration_url="https://capybaravpn.app/dashboard",
         )
