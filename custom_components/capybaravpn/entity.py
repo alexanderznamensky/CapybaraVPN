@@ -45,5 +45,5 @@ class CapybaraVPNEntity(CoordinatorEntity):
             name=f"CapybaraVPN {short_id}",
             manufacturer="CapybaraVPN",
             model=tariff_name,
-            configuration_url="https://capybaravpn.app/dashboard",
+            configuration_url="https://capybara.black/dashboard",
         )

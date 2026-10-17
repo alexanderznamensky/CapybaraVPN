@@ -1,4 +1,4 @@
-"""Client for the private JSON API used by capybaravpn.app."""
+"""Client for the CapybaraVPN JSON API."""
 
 from __future__ import annotations
 
@@ -9,6 +9,8 @@ from typing import Any
 
 from aiohttp import ClientSession, ClientTimeout, CookieJar, TCPConnector
 from aiohttp.resolver import ThreadedResolver
+
+from .const import BASE_URL
 
 
 class CapybaraVPNError(Exception):
@@ -30,7 +32,7 @@ class CapybaraVPNClient:
         self,
         email: str,
         password: str,
-        base_url: str = "https://capybaravpn.app",
+        base_url: str = BASE_URL,
     ) -> None:
         self.email = email
         self.password = password
@@ -50,7 +52,7 @@ class CapybaraVPNClient:
             timeout=ClientTimeout(total=25),
             headers={
                 "Accept": "application/json, text/plain, */*",
-                "User-Agent": "HomeAssistant-CapybaraVPN/0.1.1",
+                "User-Agent": "HomeAssistant-CapybaraVPN/0.1.7",
             },
         )
 
@@ -78,7 +80,7 @@ class CapybaraVPNClient:
 
                     if response.status >= 400:
                         raise CapybaraVPNConnectionError(
-                            f"Login failed: HTTP {response.status}: {body[:300]}"
+                            f"Login failed: HTTP {response.status} at {response.url}: {body[:300]}"
                         )
 
                 # Verify that the cookie obtained during login is actually valid.
