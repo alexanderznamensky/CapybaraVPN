@@ -35,9 +35,35 @@ class CapybaraVPNCoordinator(DataUpdateCoordinator[dict]):
         )
 
     async def _async_update_data(self) -> dict:
+        """Keep previous snapshot on transient failures and flag stale data."""
+        old = self.data if isinstance(self.data, dict) else {}
         try:
-            return await self.client.get_all()
-        except CapybaraVPNAuthError as err:
-            raise UpdateFailed(f"Authentication failed: {err}") from err
-        except CapybaraVPNError as err:
-            raise UpdateFailed(f"CapybaraVPN API error: {err}") from err
+            fresh = await self.client.get_all()
+        except (CapybaraVPNAuthError, CapybaraVPNError) as err:
+            if not old or not old.get("keys"):
+                raise UpdateFailed(f"CapybaraVPN API error: {err}") from err
+            _LOGGER.warning("CapybaraVPN using cached values: %s", err)
+            return {**old, "_stale": True, "_errors": [str(err)]}
+
+        result = {**old, **fresh}
+        errors = list(fresh.get("_errors", []))
+        # API may omit the keys list when a subscription is suspended.
+        # Preserve registered entities rather than removing their data.
+        if "keys" not in fresh or (not fresh["keys"] and old.get("keys")):
+            result["keys"] = old.get("keys", [])
+            if old.get("keys"):
+                errors.append("Subscription list missing/empty; previous list retained")
+        else:
+            old_keys = {
+                str(x.get("key", {}).get("client_id")): x
+                for x in old.get("keys", [])
+            }
+            merged = []
+            for item in fresh["keys"]:
+                cid = str(item.get("key", {}).get("client_id"))
+                merged.append({**old_keys.get(cid, {}), **item})
+            result["keys"] = merged
+
+        result["_errors"] = errors
+        result["_stale"] = bool(errors)
+        return result

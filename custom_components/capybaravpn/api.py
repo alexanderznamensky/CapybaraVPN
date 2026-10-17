@@ -178,36 +178,54 @@ class CapybaraVPNClient:
         )
 
     async def get_all(self) -> dict[str, Any]:
-        """Get all information used by Home Assistant entities."""
-        me, summary, keys, payments = await asyncio.gather(
-            self.get_me(),
-            self.get_summary(),
-            self.get_keys(),
-            self.get_payments(),
+        """Fetch endpoints independently; retain successful sections on partial failures.
+
+        The coordinator merges missing sections with the previous snapshot.
+        Never turn an endpoint failure into an empty subscription list.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+        names = ("me", "summary", "keys", "payments")
+        results = await asyncio.gather(
+            self.get_me(), self.get_summary(), self.get_keys(),
+            self.get_payments(), return_exceptions=True,
         )
+        data: dict[str, Any] = {"_errors": []}
+        for name, result in zip(names, results):
+            if isinstance(result, BaseException):
+                if isinstance(result, asyncio.CancelledError):
+                    raise result
+                data["_errors"].append(f"{name}: {result}")
+                logger.warning("CapybaraVPN endpoint %s failed: %s", name, result)
+            else:
+                data[name] = result
 
-        async def enrich(key: dict[str, Any]) -> dict[str, Any]:
-            client_id = key.get("client_id")
-            if not client_id:
-                return {"key": key}
+        keys = data.get("keys")
+        if isinstance(keys, list):
+            async def enrich(key: dict[str, Any]) -> dict[str, Any]:
+                client_id = key.get("client_id")
+                item: dict[str, Any] = {"key": key}
+                if not client_id:
+                    return item
+                sections = ("details", "connection", "addons")
+                results = await asyncio.gather(
+                    self.get_details(client_id),
+                    self.get_connection(client_id),
+                    self.get_addons_preview(client_id),
+                    return_exceptions=True,
+                )
+                for section, result in zip(sections, results):
+                    if isinstance(result, BaseException):
+                        if isinstance(result, asyncio.CancelledError):
+                            raise result
+                        data["_errors"].append(f"{client_id}/{section}: {result}")
+                        logger.warning("CapybaraVPN %s/%s failed: %s", client_id, section, result)
+                    else:
+                        item[section] = result
+                return item
 
-            details, connection, addons = await asyncio.gather(
-                self.get_details(client_id),
-                self.get_connection(client_id),
-                self.get_addons_preview(client_id),
-            )
-            return {
-                "key": key,
-                "details": details,
-                "connection": connection,
-                "addons": addons,
-            }
+            data["keys"] = await asyncio.gather(*(enrich(k) for k in keys))
 
-        enriched = await asyncio.gather(*(enrich(k) for k in keys))
-
-        return {
-            "me": me,
-            "summary": summary,
-            "payments": payments,
-            "keys": list(enriched),
-        }
+        if len(data) == 1:  # _errors only: no endpoint answered.
+            raise CapybaraVPNConnectionError("All API endpoints failed: " + "; ".join(data["_errors"]))
+        return data

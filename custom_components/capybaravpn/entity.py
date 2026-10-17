@@ -29,9 +29,15 @@ class CapybaraVPNEntity(CoordinatorEntity):
 
     @property
     def available(self) -> bool:
-        if not self.coordinator.last_update_success:
-            return False
         return self._key_data() is not None
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        data = self.coordinator.data or {}
+        return {
+            "data_stale": bool(data.get("_stale", False)),
+            "api_errors": data.get("_errors", []),
+        }
 
     @property
     def device_info(self) -> DeviceInfo:
