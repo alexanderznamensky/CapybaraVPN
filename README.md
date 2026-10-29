@@ -1,6 +1,6 @@
 # CapybaraVPN — custom integration for Home Assistant
 
-Интеграция использует тот же JSON API, что и личный кабинет `capybaravpn.app`.
+Интеграция использует тот же JSON API, что и личный кабинет `[capybaravpn.app](https://capybara.black)`.
 
 ## Авторизация
 
